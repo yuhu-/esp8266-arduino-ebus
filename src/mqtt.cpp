@@ -4,18 +4,61 @@
 #include "schedule.hpp"
 #include "store.hpp"
 
-AsyncMqttClient mqttClient;
+Mqtt mqtt;
 
-void onMqttConnect(bool sessionPresent) {
-  mqttClient.subscribe("ebus/config/restart", 0);
+Mqtt::Mqtt() {
+  client.onConnect(onConnect);
+  client.onDisconnect(onDisconnect);
+  client.onSubscribe(onSubscribe);
+  client.onUnsubscribe(onUnsubscribe);
+  client.onMessage(onMessage);
+  client.onPublish(onPublish);
+}
+
+void Mqtt::setUniqueId(const uint32_t id) {
+  char tmp[9];
+  snprintf(tmp, sizeof(tmp), "%08X", id);
+  uniqueId = std::string(tmp).substr(2, 6);
+  rootTopic = "ebus/" + uniqueId + "/";
+}
+
+const std::string &Mqtt::getUniqueId() const { return uniqueId; }
+
+const std::string &Mqtt::getRootTopic() const { return rootTopic; }
+
+void Mqtt::setServer(const char *host, uint16_t port) {
+  client.setServer(host, port);
+}
+
+void Mqtt::setCredentials(const char *username, const char *password) {
+  client.setCredentials(username, password);
+}
+
+void Mqtt::connect() { client.connect(); }
+
+bool Mqtt::connected() const { return client.connected(); }
+
+uint16_t Mqtt::publish(const char *topic, uint8_t qos, bool retain,
+                       const char *payload, bool prefix) {
+  std::string mqttTopic = topic;
+  if (prefix) mqttTopic = rootTopic + topic;
+  return client.publish(mqttTopic.c_str(), qos, retain, payload);
+}
+
+uint16_t Mqtt::subscribe(const char *topic, uint8_t qos) {
+  return client.subscribe(topic, qos);
+}
+
+void Mqtt::onConnect(bool sessionPresent) {
+  std::string topic = mqtt.getRootTopic() + "cmd/restart";
+  mqtt.subscribe(topic.c_str(), 0);
   // Restart the device
-  // topic  : ebus/config/restart
   // payload: true
 
 #ifdef EBUS_INTERNAL
-  mqttClient.subscribe("ebus/config/insert", 0);
+  topic = mqtt.getRootTopic() + "cmd/insert";
+  mqtt.subscribe(topic.c_str(), 0);
   // Insert new command
-  // topic  : ebus/config/insert
   // payload: ebus command in form of "ZZPBSBNNDBx" for e.g.
   // {
   //   "key": "UNIQUE_KEY",
@@ -31,51 +74,51 @@ void onMqttConnect(bool sessionPresent) {
   //   "ha_class": "temperature"
   // }
 
-  mqttClient.subscribe("ebus/config/remove", 0);
+  topic = mqtt.getRootTopic() + "cmd/remove";
+  mqtt.subscribe(topic.c_str(), 0);
   // Remove loaded command
-  // topic  : ebus/config/remove
   // payload: UNIQUE_KEY of ebus command
   // {
   //   "key": "UNIQUE_KEY"
   // }
 
-  mqttClient.subscribe("ebus/config/list", 0);
+  topic = mqtt.getRootTopic() + "cmd/list";
+  mqtt.subscribe(topic.c_str(), 0);
   // Publish loaded commands
-  // topic  : ebus/config/list
   // payload: true
 
-  mqttClient.subscribe("ebus/config/raw", 0);
+  topic = mqtt.getRootTopic() + "cmd/raw";
+  mqtt.subscribe(topic.c_str(), 0);
   // Enable/disable the raw data printout
-  // topic  : ebus/config/raw
   // payload: true
 
-  mqttClient.subscribe("ebus/config/filter", 0);
+  topic = mqtt.getRootTopic() + "cmd/filter";
+  mqtt.subscribe(topic.c_str(), 0);
   // Insert raw data filter
-  // topic  : ebus/config/filter
   // payload: array of sequences for e.g.
   // [
   //   "0700",
   //   "fe"
   // ]
 
-  mqttClient.subscribe("ebus/config/load", 0);
+  topic = mqtt.getRootTopic() + "cmd/load";
+  mqtt.subscribe(topic.c_str(), 0);
   // Loading saved commands
-  // topic  : ebus/config/load
   // payload: true
 
-  mqttClient.subscribe("ebus/config/save", 0);
+  topic = mqtt.getRootTopic() + "cmd/save";
+  mqtt.subscribe(topic.c_str(), 0);
   // Saving loaded commands
-  // topic  : ebus/config/save
   // payload: true
 
-  mqttClient.subscribe("ebus/config/wipe", 0);
+  topic = mqtt.getRootTopic() + "cmd/wipe";
+  mqtt.subscribe(topic.c_str(), 0);
   // Wiping saved commands
-  // topic  : ebus/config/wipe
   // payload: true
 
-  mqttClient.subscribe("ebus/config/send", 0);
+  topic = mqtt.getRootTopic() + "cmd/send";
+  mqtt.subscribe(topic.c_str(), 0);
   // Sending of given ebus command(s) once
-  // topic  : ebus/config/send
   // payload: array of ebus command(s) in form of "ZZPBSBNNDBx" for e.g.
   // [
   //   "05070400",
@@ -84,40 +127,33 @@ void onMqttConnect(bool sessionPresent) {
 #endif
 }
 
-void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {}
+void Mqtt::onMessage(const char *topic, const char *payload,
+                     AsyncMqttClientMessageProperties properties, size_t len,
+                     size_t index, size_t total) {
+  std::string tmp = topic;
 
-void onMqttSubscribe(uint16_t packetId, uint8_t qos) {}
-
-void onMqttUnsubscribe(uint16_t packetId) {}
-
-void onMqttMessage(const char *topic, const char *payload,
-                   AsyncMqttClientMessageProperties properties, size_t len,
-                   size_t index, size_t total) {
-  String tmp = String(topic);
-  if (tmp.equals("ebus/config/restart")) {
+  if (tmp.rfind("restart") != std::string::npos) {
     if (String(payload).equalsIgnoreCase("true")) reset();
   }
 #ifdef EBUS_INTERNAL
-  if (tmp.equals("ebus/config/insert")) {
+  if (tmp.rfind("insert") != std::string::npos) {
     if (String(payload).length() > 0) store.enqueCommand(payload);
-  } else if (tmp.equals("ebus/config/remove")) {
+  } else if (tmp.rfind("remove") != std::string::npos) {
     if (String(payload).length() > 0) store.removeCommand(payload);
-  } else if (tmp.equals("ebus/config/list")) {
+  } else if (tmp.rfind("list") != std::string::npos) {
     if (String(payload).equalsIgnoreCase("true")) store.publishCommands();
-  } else if (tmp.equals("ebus/config/raw")) {
+  } else if (tmp.rfind("raw") != std::string::npos) {
     schedule.publishRaw(String(payload).equalsIgnoreCase("true"));
-  } else if (tmp.equals("ebus/config/filter")) {
+  } else if (tmp.rfind("filter") != std::string::npos) {
     if (String(payload).length() > 0) schedule.handleFilter(payload);
-  } else if (tmp.equals("ebus/config/load")) {
+  } else if (tmp.rfind("load") != std::string::npos) {
     if (String(payload).equalsIgnoreCase("true")) store.loadCommands();
-  } else if (tmp.equals("ebus/config/save")) {
+  } else if (tmp.rfind("save") != std::string::npos) {
     if (String(payload).equalsIgnoreCase("true")) store.saveCommands();
-  } else if (tmp.equals("ebus/config/wipe")) {
+  } else if (tmp.rfind("wipe") != std::string::npos) {
     if (String(payload).equalsIgnoreCase("true")) store.wipeCommands();
-  } else if (tmp.equals("ebus/config/send")) {
+  } else if (tmp.rfind("send") != std::string::npos) {
     if (String(payload).length() > 0) schedule.handleSend(payload);
   }
 #endif
 }
-
-void onMqttPublish(uint16_t packetId) {}
