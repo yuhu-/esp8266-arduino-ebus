@@ -370,6 +370,17 @@ void Store::publishHomeAssistant(const Command *command, const bool remove) {
     doc["unique_id"] = mqtt.getUniqueId() + '_' + command->key;
     doc["value_template"] = "{{value_json.value}}";
 
+    JsonObject device = doc["device"].to<JsonObject>();
+    device["identifiers"] = "ebus_" + mqtt.getUniqueId();
+    device["name"] = "esp-eBus adapter " + mqtt.getUniqueId();
+    device["manufacturer"] = "";  // TODO(yuhu-): fill with thing data
+    device["model"] = "";         // TODO(yuhu-): fill with thing data
+    device["model_id"] = "";      // TODO(yuhu-): fill with thing data
+    device["serial_number"] = mqtt.getUniqueId();
+    device["hw_version"] = "";  // TODO(yuhu-): fill with thing data
+    device["sw_version"] = "";  // TODO(yuhu-): fill with thing data
+    device["configuration_url"] = "http://esp-ebus.local";
+
     serializeJson(doc, payload);
   }
 
