@@ -52,14 +52,14 @@ uint16_t Mqtt::subscribe(const char *topic, uint8_t qos) {
 void Mqtt::onConnect(bool sessionPresent) {
   std::string topic = mqtt.getRootTopic() + "cmd/restart";
   mqtt.subscribe(topic.c_str(), 0);
-  // Restart the device
+  // Restarting of the device
   // payload: true
 
 #ifdef EBUS_INTERNAL
   topic = mqtt.getRootTopic() + "cmd/insert";
   mqtt.subscribe(topic.c_str(), 0);
-  // Insert new command
-  // payload: ebus command in form of "ZZPBSBNNDBx" for e.g.
+  // Inserting (Installing) a new command
+  // payload: ebus command in form of "ZZPBSBNNDBx" with a UNIQUE_KEY for e.g.
   // {
   //   "key": "UNIQUE_KEY",
   //   "command": "fe070009",
@@ -76,7 +76,7 @@ void Mqtt::onConnect(bool sessionPresent) {
 
   topic = mqtt.getRootTopic() + "cmd/remove";
   mqtt.subscribe(topic.c_str(), 0);
-  // Remove loaded command
+  // Removing an installed command
   // payload: UNIQUE_KEY of ebus command
   // {
   //   "key": "UNIQUE_KEY"
@@ -84,36 +84,22 @@ void Mqtt::onConnect(bool sessionPresent) {
 
   topic = mqtt.getRootTopic() + "cmd/list";
   mqtt.subscribe(topic.c_str(), 0);
-  // Publish loaded commands
+  // List all installed commands
   // payload: true
-
-  topic = mqtt.getRootTopic() + "cmd/raw";
-  mqtt.subscribe(topic.c_str(), 0);
-  // Enable/disable the raw data printout
-  // payload: true
-
-  topic = mqtt.getRootTopic() + "cmd/filter";
-  mqtt.subscribe(topic.c_str(), 0);
-  // Insert raw data filter
-  // payload: array of sequences for e.g.
-  // [
-  //   "0700",
-  //   "fe"
-  // ]
 
   topic = mqtt.getRootTopic() + "cmd/load";
   mqtt.subscribe(topic.c_str(), 0);
-  // Loading saved commands
+  // Loading (install) of saved commands
   // payload: true
 
   topic = mqtt.getRootTopic() + "cmd/save";
   mqtt.subscribe(topic.c_str(), 0);
-  // Saving loaded commands
+  // Saving of current installed commands
   // payload: true
 
   topic = mqtt.getRootTopic() + "cmd/wipe";
   mqtt.subscribe(topic.c_str(), 0);
-  // Wiping saved commands
+  // Wiping of saved commands
   // payload: true
 
   topic = mqtt.getRootTopic() + "cmd/send";
@@ -123,6 +109,20 @@ void Mqtt::onConnect(bool sessionPresent) {
   // [
   //   "05070400",
   //   "15070400"
+  // ]
+
+  topic = mqtt.getRootTopic() + "cmd/raw";
+  mqtt.subscribe(topic.c_str(), 0);
+  // Toggling of the raw data printout
+  // payload: true | false
+
+  topic = mqtt.getRootTopic() + "cmd/filter";
+  mqtt.subscribe(topic.c_str(), 0);
+  // Adding filter(s) for raw data printout
+  // payload: array of sequences for e.g.
+  // [
+  //   "0700",
+  //   "fe"
   // ]
 #endif
 }
@@ -142,10 +142,6 @@ void Mqtt::onMessage(const char *topic, const char *payload,
     if (String(payload).length() > 0) store.removeCommand(payload);
   } else if (tmp.rfind("list") != std::string::npos) {
     if (String(payload).equalsIgnoreCase("true")) store.publishCommands();
-  } else if (tmp.rfind("raw") != std::string::npos) {
-    schedule.publishRaw(String(payload).equalsIgnoreCase("true"));
-  } else if (tmp.rfind("filter") != std::string::npos) {
-    if (String(payload).length() > 0) schedule.handleFilter(payload);
   } else if (tmp.rfind("load") != std::string::npos) {
     if (String(payload).equalsIgnoreCase("true")) store.loadCommands();
   } else if (tmp.rfind("save") != std::string::npos) {
@@ -154,6 +150,10 @@ void Mqtt::onMessage(const char *topic, const char *payload,
     if (String(payload).equalsIgnoreCase("true")) store.wipeCommands();
   } else if (tmp.rfind("send") != std::string::npos) {
     if (String(payload).length() > 0) schedule.handleSend(payload);
+  } else if (tmp.rfind("raw") != std::string::npos) {
+    schedule.publishRaw(String(payload).equalsIgnoreCase("true"));
+  } else if (tmp.rfind("filter") != std::string::npos) {
+    if (String(payload).length() > 0) schedule.handleFilter(payload);
   }
 #endif
 }
